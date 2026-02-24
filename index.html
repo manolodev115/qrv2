@@ -6,43 +6,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-  body {
-    margin: 0;
-    background: #000;
-    color: #fff;
-    font-family: system-ui, -apple-system;
-    text-align: center;
-  }
+body {
+  margin: 0;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system;
+  text-align: center;
+}
 
-  h2 { margin: 10px 0 4px; }
-  p { margin: 0 0 10px; opacity: .8; }
+h2 { margin: 10px 0 4px; }
+p { margin: 0 0 10px; opacity: .8; }
 
-  #reader {
-    width: 100vw;
-    height: 75vh;
-    overflow: hidden;
-  }
+#reader {
+  width: 100vw;
+  height: 70vh;
+  overflow: hidden;
+}
 
-  video {
-    width: 100%;
-    height: auto;
-  }
+video {
+  width: 100%;
+  height: auto;
+}
 
-  .confirmacion {
-    font-size: 1.2rem;
-    margin-top: 8px;
-    color: #00ff88;
-  }
+.confirmacion {
+  font-size: 1.2rem;
+  margin-top: 8px;
+  color: #00ff88;
+}
 
-  .confirmacion.error {
-    color: #ff5555;
-  }
+.confirmacion.error {
+  color: #ff5555;
+}
 
-  #ultimoUsuario {
-    margin-top: 6px;
-    font-size: 1rem;
-    font-weight: 500;
-  }
+#ultimoUsuario {
+  margin-top: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.debug {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  opacity: .8;
+  word-break: break-all;
+}
 </style>
 </head>
 <body>
@@ -51,8 +58,17 @@
 <p>Escanea el QR del gafete</p>
 
 <div id="reader"></div>
+
 <div id="confirmacion" class="confirmacion" style="display:none;"></div>
 <div id="ultimoUsuario"></div>
+
+<div class="debug">
+  <div><strong>QR leído:</strong></div>
+  <div id="qrLeido"></div>
+
+  <div style="margin-top:6px;"><strong>ID usado para buscar:</strong></div>
+  <div id="qrNormalizado"></div>
+</div>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -63,7 +79,7 @@
 
 <script>
 
-/* 🔥 CONFIG TU PROYECTO REAL */
+/* 🔥 TU PROYECTO REAL */
 firebase.initializeApp({
   apiKey: "AIzaSyDYGw0z382RHrr7y9PE10WZi5SHI4ba1Oc",
   authDomain: "asistencia-9755f.firebaseapp.com",
@@ -78,19 +94,12 @@ const db = firebase.firestore();
 const readerEl = document.getElementById("reader");
 const confirmacion = document.getElementById("confirmacion");
 const ultimoUsuarioEl = document.getElementById("ultimoUsuario");
+const qrLeidoEl = document.getElementById("qrLeido");
+const qrNormalizadoEl = document.getElementById("qrNormalizado");
 
 let video, canvas, ctx;
 let scanning = false;
 let bloqueado = false;
-
-/* 🔐 Generar ID seguro EXACTAMENTE igual que en tu registro */
-function generarIdSeguro(nombre) {
-  return nombre
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quitar acentos
-    .replace(/\s+/g, "_")
-    .toLowerCase();
-}
 
 /* Confirmación visual */
 function mostrarConfirmacion(msg, tipo = "exito") {
@@ -103,21 +112,27 @@ function mostrarConfirmacion(msg, tipo = "exito") {
   setTimeout(() => confirmacion.style.display = "none", 1500);
 }
 
-/* Procesar QR (ahora interpreta nombre) */
+/* Procesar QR */
 async function procesarQR(qrText) {
 
   if (bloqueado) return;
   bloqueado = true;
 
-  const nombreLeido = qrText.trim();
+  const qrOriginal = qrText.trim();
+  const docId = qrOriginal.normalize("NFC");
 
-  if (!nombreLeido) {
+  // 🔎 Mostrar debug en pantalla
+  qrLeidoEl.textContent = qrOriginal;
+  qrNormalizadoEl.textContent = docId;
+
+  console.log("QR leído:", qrOriginal);
+  console.log("ID usado:", docId);
+
+  if (!docId) {
     mostrarConfirmacion("QR inválido ❌", "error");
     bloqueado = false;
     return;
   }
-
-  const docId = generarIdSeguro(nombreLeido);
 
   try {
 
@@ -158,7 +173,7 @@ async function procesarQR(qrText) {
   setTimeout(() => bloqueado = false, 1500);
 }
 
-/* Escaneo frame a frame */
+/* Escaneo */
 function tick() {
 
   if (!scanning) return;
