@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Lector QR – Asistencia</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+  body {
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, -apple-system;
+    text-align: center;
+  }
+
+  h2 {
+    margin: 10px 0 4px;
+  }
+
+  p {
+    margin: 0 0 10px;
+    opacity: .8;
+  }
+
+  #reader {
+    width: 100vw;
+    height: 75vh;
+    overflow: hidden;
+  }
+
+  video {
+    width: 100%;
+    height: auto;
+  }
+
+  .confirmacion {
+    font-size: 1.2rem;
+    margin-top: 8px;
+    color: #00ff88;
+  }
+
+  .confirmacion.error {
+    color: #ff5555;
+  }
+
+  #ultimoUsuario {
+    margin-top: 6px;
+    font-size: 0.95rem;
+    opacity: .9;
+  }
+</style>
+</head>
+<body>
+
+<h2>📷 Registro de Asistencia</h2>
+<p>Escanea el QR del gafete</p>
+
+<div id="reader"></div>
+<div id="confirmacion" class="confirmacion" style="display:none;"></div>
+<div id="ultimoUsuario"></div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<!-- jsQR -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+<script>
+/* 🔥 Firebase config */
+firebase.initializeApp({
+  apiKey: "AIzaSyDqyTJMHpPVeoQuV1xFFPWPCxkZpaQiGv0",
+  authDomain: "proyecto-asistencia-4b6ba.firebaseapp.com",
+  projectId: "proyecto-asistencia-4b6ba"
+});
+
+const db = firebase.firestore();
+
+/* --- Referencias DOM --- */
+const readerEl = document.getElementById("reader");
+const confirmacion = document.getElementById("confirmacion");
+const ultimoUsuarioEl = document.getElementById("ultimoUsuario");
+
+let video, canvas, ctx;
+let scanning = false;
+let bloqueado = false;
+
+/* --- Mostrar confirmación --- */
+function mostrarConfirmacion(msg, tipo = "exito") {
+  confirmacion.textContent = msg;
+  confirmacion.className = tipo === "error"
+    ? "confirmacion error"
+    : "confirmacion";
+
+  confirmacion.style.display = "block";
+  setTimeout(() => confirmacion.style.display = "none", 1500);
+}
+
+/* --- Procesar QR --- */
+async function procesarQR(qrText) {
+  if (bloqueado) return;
+  bloqueado = true;
+
+  const docId = qrText.trim();
+  if (!docId) return;
+
+  try {
+    const ref = db.collection("usuarios").doc(docId);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      mostrarConfirmacion("Usuario no encontrado ❌", "error");
+      bloqueado = false;
+      return;
+    }
+
+    const data = snap.data();
+
+    if (!data.asistencia) {
+      await ref.update({
+        asistencia: true,
+        fechaAsistencia: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      mostrarConfirmacion("Asistencia registrada ✅");
+    } else {
+      mostrarConfirmacion("Ya estaba registrado 🟡");
+    }
+
+    ultimoUsuarioEl.textContent = `👤 ${data.nombre}`;
+    navigator.vibrate?.(100);
+
+  } catch (err) {
+    console.error(err);
+    mostrarConfirmacion("Error en Firestore ❌", "error");
+  }
+
+  setTimeout(() => {
+    bloqueado = false;
+  }, 1500);
+}
+
+/* --- Escaneo frame a frame --- */
+function tick() {
+  if (!scanning) return;
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, canvas.width, canvas.height);
+
+    if (code) {
+      procesarQR(code.data);
+    }
+  }
+
+  requestAnimationFrame(tick);
+}
+
+/* --- Iniciar escáner --- */
+function iniciarEscaner() {
+  if (scanning) return;
+  scanning = true;
+
+  readerEl.innerHTML = "";
+
+  video = document.createElement("video");
+  video.setAttribute("playsinline", true);
+  readerEl.appendChild(video);
+
+  canvas = document.createElement("canvas");
+  ctx = canvas.getContext("2d");
+
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" } }
+  })
+  .then(stream => {
+    video.srcObject = stream;
+    video.play();
+    requestAnimationFrame(tick);
+  })
+  .catch(err => {
+    console.error(err);
+    mostrarConfirmacion("No se pudo acceder a la cámara ❌", "error");
+  });
+}
+
+window.onload = iniciarEscaner;
+</script>
+
+</body>
+</html>
